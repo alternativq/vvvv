@@ -1,0 +1,1149 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Трекер тренировок — Турник и свой вес</title>
+    <!-- Подключение Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Подключение шрифта Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+                    },
+                    colors: {
+                        accent: {
+                            50: '#ecfdf5',
+                            100: '#d1fae5',
+                            500: '#10b981',
+                            600: '#059669',
+                            700: '#047857',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Плавные переходы и кастомные детали скроллбара */
+        * {
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Скрытие полосы прокрутки у горизонтального списка дней на мобильных */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        /* Анимация вспышки таймера при завершении */
+        @keyframes timerFinishPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.015); }
+        }
+        .timer-finished {
+            animation: timerFinishPulse 0.6s ease-in-out 3;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-200 min-h-screen pb-36 sm:pb-32">
+
+    <!-- Уведомление (Toast) вместо alert() -->
+    <div id="toast-container" class="fixed top-4 left-1/2 -translate-x-1/2 z-50 pointer-events-none flex flex-col items-center gap-2 w-full max-w-sm px-4"></div>
+
+    <!-- Модальное окно подтверждения сброса (вместо confirm()) -->
+    <div id="confirm-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-sm w-full p-6 shadow-xl">
+            <h3 id="modal-title" class="text-lg font-semibold text-slate-900 dark:text-white mb-2">Подтвердите действие</h3>
+            <p id="modal-desc" class="text-sm text-slate-600 dark:text-slate-400 mb-6">Вы уверены, что хотите сбросить отметки?</p>
+            <div class="flex justify-end gap-3">
+                <button id="modal-cancel" class="px-4 py-2.5 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                    Отмена
+                </button>
+                <button id="modal-confirm" class="px-4 py-2.5 rounded-xl text-sm font-medium bg-slate-900 text-white dark:bg-emerald-600 dark:hover:bg-emerald-500 hover:bg-slate-800 transition">
+                    Подтвердить
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Основной контейнер -->
+    <div class="max-w-3xl mx-auto px-4 pt-5 sm:pt-8">
+
+        <!-- Шапка приложения -->
+        <header class="flex items-center justify-between gap-4 mb-6">
+            <div>
+                <div class="flex items-center gap-2">
+                    <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-600 dark:bg-emerald-500"></span>
+                    <span class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Калистеника • 4 дня</span>
+                </div>
+                <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white mt-0.5">
+                    План тренировок
+                </h1>
+            </div>
+
+            <!-- Переключатели настроек (Автотаймер, Звук, Тема) -->
+            <div class="flex items-center gap-1.5 sm:gap-2">
+                <!-- Автозапуск таймера при отметке подхода -->
+                <button id="toggle-autostart" title="Автозапуск таймера при отметке подхода"
+                    class="flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-medium border transition">
+                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6l4 2m6-2a10 10 0 11-20 0 10 10 0 0120 0z"/>
+                    </svg>
+                    <span class="hidden sm:inline">Авто-таймер</span>
+                </button>
+
+                <!-- Звук таймера -->
+                <button id="toggle-sound" title="Звуковой сигнал таймера"
+                    class="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                    <!-- Иконка обновляется через JS -->
+                </button>
+
+                <!-- Переключатель темной/светлой темы -->
+                <button id="toggle-theme" title="Сменить тему оформления"
+                    class="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                    <svg id="theme-icon-dark" class="w-4 h-4 hidden" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+                    </svg>
+                    <svg id="theme-icon-light" class="w-4 h-4 hidden" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Вкладки выбора тренировочного дня (4 дня) -->
+        <nav aria-label="Выбор дня тренировки" class="mb-6">
+            <div id="day-tabs" class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <!-- Генерируется через JavaScript -->
+            </div>
+        </nav>
+
+        <!-- Заголовок активного дня и общий прогресс -->
+        <section class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 sm:p-5 mb-5 shadow-2xs">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                <div>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <h2 id="active-day-title" class="text-lg font-bold text-slate-900 dark:text-white"></h2>
+                        <span id="active-day-badge" class="hidden inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            Выполнено
+                        </span>
+                    </div>
+                    <p id="active-day-subtitle" class="text-sm text-slate-500 dark:text-slate-400 mt-0.5"></p>
+                </div>
+                <div class="flex items-center justify-between sm:justify-end gap-4">
+                    <div class="text-left sm:text-right">
+                        <span id="day-sets-counter" class="text-sm font-semibold text-slate-800 dark:text-slate-200">0 / 0 подходов</span>
+                        <span id="day-percent" class="text-xs text-slate-400 dark:text-slate-500 block">0% завершено</span>
+                    </div>
+                </div>
+            </div>
+            <!-- Полоса прогресса -->
+            <div class="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                <div id="day-progress-bar" class="h-full bg-emerald-600 dark:bg-emerald-500 rounded-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+        </section>
+
+        <!-- Список упражнений выбранного дня -->
+        <main id="exercises-list" class="space-y-3.5 mb-6">
+            <!-- Карточки упражнений генерируются через JavaScript -->
+        </main>
+
+        <!-- Панель действий внизу дня (Завершить / Сбросить) -->
+        <section class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mb-8">
+            <button id="btn-finish-workout"
+                class="flex-1 flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl font-semibold text-sm bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-xs transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                </svg>
+                Завершить тренировку
+            </button>
+            <button id="btn-reset-day"
+                class="flex items-center justify-center gap-2 px-4 py-3.5 rounded-2xl font-medium text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                Сбросить подходы дня
+            </button>
+        </section>
+
+        <!-- Журнал завершённых тренировок -->
+        <section class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 sm:p-5">
+            <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center gap-2">
+                    <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                    </svg>
+                    <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-200">История тренировок</h3>
+                </div>
+                <button id="btn-clear-history" class="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition hidden">
+                    Очистить
+                </button>
+            </div>
+            <div id="history-list" class="space-y-2">
+                <!-- Элементы истории генерируются через JS -->
+            </div>
+        </section>
+
+    </div>
+
+    <!-- Фиксированная панель таймера отдыха внизу экрана -->
+    <div id="timer-bar" class="fixed bottom-0 inset-x-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 shadow-lg transition-colors">
+        <!-- Тонкий прогресс-бар таймера по верхнему краю -->
+        <div class="w-full h-1 bg-slate-100 dark:bg-slate-800">
+            <div id="timer-progress-bar" class="h-full bg-emerald-600 dark:bg-emerald-500 transition-all duration-300" style="width: 100%"></div>
+        </div>
+
+        <div class="max-w-3xl mx-auto px-4 py-2.5 sm:py-3">
+            <div class="flex flex-wrap items-center justify-between gap-2 sm:gap-4">
+                
+                <!-- Левая часть: Циферблат и кнопки +/- 15 сек -->
+                <div class="flex items-center gap-2 sm:gap-3">
+                    <button id="timer-minus" title="Уменьшить на 15 сек"
+                        class="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center justify-center transition">
+                        -15
+                    </button>
+
+                    <div class="text-center min-w-[78px]">
+                        <div id="timer-display" class="text-2xl sm:text-3xl font-bold tabular-nums tracking-tight text-slate-900 dark:text-white leading-none">
+                            01:30
+                        </div>
+                        <span id="timer-label" class="text-[11px] font-medium text-slate-400 dark:text-slate-500 block mt-0.5 truncate max-w-[110px]">
+                            Отдых
+                        </span>
+                    </div>
+
+                    <button id="timer-plus" title="Добавить 15 сек"
+                        class="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center justify-center transition">
+                        +15
+                    </button>
+                </div>
+
+                <!-- Центральная часть: Быстрые пресеты (скрываются на самых узких экранах в пользу компактности, доступны со sm или компактным рядом) -->
+                <div class="hidden md:flex items-center gap-1.5">
+                    <button data-preset="45" class="timer-preset px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition">45с</button>
+                    <button data-preset="60" class="timer-preset px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition">60с</button>
+                    <button data-preset="90" class="timer-preset px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition">90с</button>
+                    <button data-preset="120" class="timer-preset px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition">120с</button>
+                    <button data-preset="150" class="timer-preset px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition">150с</button>
+                </div>
+
+                <!-- Правая часть: Старт/Пауза и Сброс -->
+                <div class="flex items-center gap-2">
+                    <button id="timer-toggle"
+                        class="px-4 sm:px-5 py-2.5 rounded-xl text-sm font-semibold bg-slate-900 dark:bg-emerald-600 text-white hover:bg-slate-800 dark:hover:bg-emerald-500 transition flex items-center gap-1.5 min-w-[104px] justify-center">
+                        <span id="timer-toggle-text">Старт</span>
+                    </button>
+                    <button id="timer-reset" title="Сбросить таймер"
+                        class="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Быстрые пресеты для мобильных и планшетов -->
+            <div class="flex md:hidden items-center justify-between gap-1.5 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+                <span class="text-[11px] text-slate-400 dark:text-slate-500 mr-1">Пресеты:</span>
+                <div class="flex items-center gap-1.5 flex-1 justify-end">
+                    <button data-preset="45" class="timer-preset flex-1 py-1 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 active:bg-slate-200 transition">45с</button>
+                    <button data-preset="60" class="timer-preset flex-1 py-1 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 active:bg-slate-200 transition">60с</button>
+                    <button data-preset="90" class="timer-preset flex-1 py-1 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 active:bg-slate-200 transition">90с</button>
+                    <button data-preset="120" class="timer-preset flex-1 py-1 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 active:bg-slate-200 transition">120с</button>
+                    <button data-preset="150" class="timer-preset flex-1 py-1 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 active:bg-slate-200 transition">150с</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * База данных программы тренировок (4 дня, турник + собственный вес)
+         */
+        const WORKOUT_PLAN = [
+            {
+                id: 'day1',
+                shortTitle: 'День 1',
+                focus: 'Верх • Сила',
+                title: 'День 1 — Верх (Сила и сложные рычаги)',
+                subtitle: 'Акцент на силу тяги, вертикальный жим и контроль негативной фазы.',
+                exercises: [
+                    {
+                        id: 'd1_e1',
+                        name: 'Подтягивания лучника (или с паузой 2 сек. в верхней точке)',
+                        sets: 4,
+                        reps: '6–10 повт.',
+                        restSec: 150,
+                        restLabel: '150 сек (2.5 мин)',
+                        tip: 'Одна рука активно тянет корпус к кисти, вторая выпрямлена в сторону и лишь стабилизирует движение. Если пока тяжело — делайте обычные подтягивания с чёткой паузой 2 секунды, когда подбородок выше перекладины.'
+                    },
+                    {
+                        id: 'd1_e2',
+                        name: 'Отжимания «щучкой» (ноги на возвышении, акцент на плечи)',
+                        sets: 4,
+                        reps: '8–12 повт.',
+                        restSec: 120,
+                        restLabel: '120 сек (2 мин)',
+                        tip: 'Поставьте стопы на диван или стул, таз поднимите максимально высоко, чтобы корпус был почти вертикально. Опускайтесь макушкой вперёд перед линией ладоней, локти не разводите слишком широко.'
+                    },
+                    {
+                        id: 'd1_e3',
+                        name: 'Подтягивания узким обратным хватом (медленный спуск 3–4 сек.)',
+                        sets: 3,
+                        reps: '8–10 повт.',
+                        restSec: 90,
+                        restLabel: '90 сек',
+                        tip: 'Мощно подтянитесь вверх до касания перекладины верхом груди, а затем плавно опускайтесь на 3–4 счёта до полного выпрямления рук без рывка в нижней точке.'
+                    },
+                    {
+                        id: 'd1_e4',
+                        name: 'Отжимания с узкой постановкой рук (трицепс)',
+                        sets: 3,
+                        reps: '12–15 повт.',
+                        restSec: 90,
+                        restLabel: '90 сек',
+                        tip: 'Ладони поставьте чуть уже ширины плеч. Локти во время движения скользят строго вдоль корпуса назад, пресс и ягодицы напряжены.'
+                    }
+                ]
+            },
+            {
+                id: 'day2',
+                shortTitle: 'День 2',
+                focus: 'Низ и Кор',
+                title: 'День 2 — Низ и Кор (Баланс и взрыв)',
+                subtitle: 'Унилатеральная нагрузка на ноги и глубокая проработка пресса в висе.',
+                exercises: [
+                    {
+                        id: 'd2_e1',
+                        name: 'Болгарские сплит-приседания (задняя нога на диване/стуле)',
+                        sets: 4,
+                        reps: '10–12 на ногу',
+                        restSec: 90,
+                        restLabel: '90 сек',
+                        tip: 'Основной вес (около 80–85%) держите на передней ноге. Опускайтесь глубоко вниз, слегка наклонив корпус вперёд для лучшего включения ягодиц и квадрицепса.'
+                    },
+                    {
+                        id: 'd2_e2',
+                        name: 'Подъём прямых ног к перекладине в висе',
+                        sets: 4,
+                        reps: '10–15 повт.',
+                        restSec: 90,
+                        restLabel: '90 сек',
+                        tip: 'Избегайте раскачки. Начинайте движение с подкручивания таза вверх, а не просто сгибания в тазобедренном суставе. Опускайте ноги подконтрольно.'
+                    },
+                    {
+                        id: 'd2_e3',
+                        name: 'Выпады назад с паузой в нижней точке',
+                        sets: 3,
+                        reps: '12 на ногу',
+                        restSec: 75,
+                        restLabel: '75 сек',
+                        tip: 'Сделайте шаг назад, опустите колено почти до касания пола, зафиксируйте положение на 1–2 секунды без расслабления мышц и вернитесь в исходную стойку.'
+                    },
+                    {
+                        id: 'd2_e4',
+                        name: 'Ягодичный мостик на одной ноге',
+                        sets: 3,
+                        reps: '15 на ногу',
+                        restSec: 60,
+                        restLabel: '60 сек',
+                        tip: 'Лёжа на спине, упритесь пяткой опорной ноги в пол, вторую ногу вытяните вверх. В верхней точке сильно сожмите ягодицу на 1 секунду, не прогибаясь в пояснице.'
+                    },
+                    {
+                        id: 'd2_e5',
+                        name: 'Скручивания «дворники» в висе на турнике',
+                        sets: 3,
+                        reps: '10–12 повт.',
+                        restSec: 60,
+                        restLabel: '60 сек',
+                        tip: 'Поднимите ноги до угла 90° или выше и плавно опускайте их поочерёдно влево и вправо, удерживая плечи стабилизированными.'
+                    }
+                ]
+            },
+            {
+                id: 'day3',
+                shortTitle: 'День 3',
+                focus: 'Верх • Объём',
+                title: 'День 3 — Верх (Объём и выносливость)',
+                subtitle: 'Взрывная мощность тяги, работа в нижней амплитуде и проработка передних дельт.',
+                exercises: [
+                    {
+                        id: 'd3_e1',
+                        name: 'Высокие подтягивания (тянуться грудью/солнечным сплетением)',
+                        sets: 4,
+                        reps: '8–12 повт.',
+                        restSec: 120,
+                        restLabel: '120 сек (2 мин)',
+                        tip: 'Взрывной старт из виса: тяните локти вниз и назад, стараясь вывести перекладину к низу груди или солнечному сплетению. Отличная база для выхода силой.'
+                    },
+                    {
+                        id: 'd3_e2',
+                        name: 'Отжимания с паузой 2 сек. внизу и взрывным подъёмом',
+                        sets: 4,
+                        reps: '12–15 повт.',
+                        restSec: 90,
+                        restLabel: '90 сек',
+                        tip: 'Опуститесь так, чтобы грудь была в 2 см от пола, замрите на 2 полные секунды (убирая инерцию растяжения) и мощно вытолкните себя вверх.'
+                    },
+                    {
+                        id: 'd3_e3',
+                        name: 'Удержание уголка в висе с подтягиваниями (или австралийские)',
+                        sets: 3,
+                        reps: '8–12 повт.',
+                        restSec: 90,
+                        restLabel: '90 сек',
+                        tip: 'Поднимите прямые или согнутые ноги в L-уголок (90°) и выполните подход подтягиваний, не опуская ноги. Отлично грузит кор и широчайшие одновременно.'
+                    },
+                    {
+                        id: 'd3_e4',
+                        name: 'Псевдо-планш отжимания (руки ближе к поясу, наклон корпуса вперёд)',
+                        sets: 3,
+                        reps: '8–12 повт.',
+                        restSec: 90,
+                        restLabel: '90 сек',
+                        tip: 'Разверните пальцы рук немного в стороны или назад, подайте плечи максимально вперёд за линию кистей и сохраняйте этот наклон на протяжении всего повторения.'
+                    }
+                ]
+            },
+            {
+                id: 'day4',
+                shortTitle: 'День 4',
+                focus: 'Низ • Статика',
+                title: 'День 4 — Низ и Кор (Сила и статика)',
+                subtitle: 'Максимальная координация ног, плиометрика и жёсткое удержание кора.',
+                exercises: [
+                    {
+                        id: 'd4_e1',
+                        name: 'Приседания «пистолетик» (или с опорой рукой за косяк двери)',
+                        sets: 4,
+                        reps: '5–8 на ногу',
+                        restSec: 120,
+                        restLabel: '120 сек (2 мин)',
+                        tip: 'Следите, чтобы пятка опорной ноги не отрывалась от пола, а колено не заваливалось внутрь. При необходимости слегка придерживайтесь пальцами за дверной косяк для равновесия.'
+                    },
+                    {
+                        id: 'd4_e2',
+                        name: 'Поднос коленей к груди с поворотом (косые мышцы)',
+                        sets: 4,
+                        reps: '12–16 повт.',
+                        restSec: 75,
+                        restLabel: '75 сек',
+                        tip: 'В висе на турнике подтягивайте колени по диагонали то к правому, то к левому плечу, скручивая таз в верхней точке.'
+                    },
+                    {
+                        id: 'd4_e3',
+                        name: 'Приседания с выпрыгиванием',
+                        sets: 3,
+                        reps: '12–15 повт.',
+                        restSec: 90,
+                        restLabel: '90 сек',
+                        tip: 'Опуститесь до параллели бёдер с полом и максимально взрывным усилием выпрыгните вверх. Мягко приземляйтесь на носки, сразу переходя в следующий присед.'
+                    },
+                    {
+                        id: 'd4_e4',
+                        name: 'Подъёмы на носки стоя на одной ноге (икры)',
+                        sets: 3,
+                        reps: '15–20 на ногу',
+                        restSec: 45,
+                        restLabel: '45 сек',
+                        tip: 'Работайте в полной амплитуде с паузой 1 секунду на самом высоком подъёме на носок. Для баланса можно слегка касаться стены.'
+                    },
+                    {
+                        id: 'd4_e5',
+                        name: 'Планка с выносом рук вперёд (RKC-планка)',
+                        sets: 3,
+                        reps: '30–45 сек',
+                        restSec: 60,
+                        restLabel: '60 сек',
+                        tip: 'Поставьте локти на 10–15 см дальше обычного, изо всех сил напрягите ягодицы, квадрицепсы и пресс, мысленно «стягивая» локти к носкам.'
+                    }
+                ]
+            }
+        ];
+
+        const STORAGE_KEY = 'calisthenics_tracker_v1';
+
+        /**
+         * Состояние приложения (загружается из localStorage)
+         */
+        let state = {
+            activeDayId: 'day1',
+            completedSets: {}, // { 'd1_e1': [true, false, false, false] }
+            completedDays: {}, // { 'day1': true }
+            history: [],       // [{ id, dayId, dayTitle, dateStr, setsCount }]
+            settings: {
+                darkMode: false,
+                autoStartTimer: true,
+                soundEnabled: true
+            }
+        };
+
+        /**
+         * Состояние таймера отдыха
+         */
+        let timerState = {
+            duration: 90,
+            remaining: 90,
+            isRunning: false,
+            intervalId: null,
+            label: 'Отдых'
+        };
+
+        // Инициализация состояния из localStorage
+        function loadState() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    state = {
+                        ...state,
+                        ...parsed,
+                        settings: {
+                            ...state.settings,
+                            ...(parsed.settings || {})
+                        }
+                    };
+                } else {
+                    // Определяем системную тему при первом запуске
+                    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                        state.settings.darkMode = true;
+                    }
+                }
+            } catch (e) {
+                console.error('Ошибка чтения localStorage:', e);
+            }
+        }
+
+        function saveState() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+            } catch (e) {
+                console.error('Ошибка записи в localStorage:', e);
+            }
+        }
+
+        /**
+         * Звуковой сигнал окончания отдыха через Web Audio API (без внешних файлов)
+         */
+        function playTimerChime() {
+            if (!state.settings.soundEnabled) return;
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (!AudioCtx) return;
+                const ctx = new AudioCtx();
+
+                const playBeep = (freq, startTime, duration) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, startTime);
+
+                    gain.gain.setValueAtTime(0.001, startTime);
+                    gain.gain.exponentialRampToValueAtTime(0.22, startTime + 0.03);
+                    gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+
+                    osc.start(startTime);
+                    osc.stop(startTime + duration);
+                };
+
+                const now = ctx.currentTime;
+                playBeep(587.33, now, 0.22);        // D5
+                playBeep(880.00, now + 0.24, 0.35); // A5
+            } catch (e) {
+                console.warn('Не удалось воспроизвести звук:', e);
+            }
+        }
+
+        /**
+         * Показ аккуратного всплывающего уведомления
+         */
+        function showToast(message, type = 'neutral') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            const bgClass = type === 'success'
+                ? 'bg-emerald-700 text-white border-emerald-600'
+                : 'bg-slate-800 dark:bg-slate-800 text-white border-slate-700';
+
+            toast.className = `px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium shadow-lg border ${bgClass} transition-all duration-300 opacity-0 translate-y-[-8px]`;
+            toast.textContent = message;
+
+            container.appendChild(toast);
+            requestAnimationFrame(() => {
+                toast.classList.remove('opacity-0', 'translate-y-[-8px]');
+            });
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-[-8px]');
+                setTimeout(() => toast.remove(), 300);
+            }, 2600);
+        }
+
+        /**
+         * Кастомное модальное окно подтверждения
+         */
+        function showConfirmModal(title, desc, onConfirm) {
+            const modal = document.getElementById('confirm-modal');
+            document.getElementById('modal-title').textContent = title;
+            document.getElementById('modal-desc').textContent = desc;
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+
+            const close = () => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            };
+
+            const btnCancel = document.getElementById('modal-cancel');
+            const btnConfirm = document.getElementById('modal-confirm');
+
+            btnCancel.onclick = close;
+            btnConfirm.onclick = () => {
+                close();
+                onConfirm();
+            };
+        }
+
+        /**
+         * Применение темы и обновление иконок настроек
+         */
+        function applyThemeAndSettings() {
+            const html = document.documentElement;
+            const iconDark = document.getElementById('theme-icon-dark');
+            const iconLight = document.getElementById('theme-icon-light');
+
+            if (state.settings.darkMode) {
+                html.classList.add('dark');
+                iconLight.classList.remove('hidden');
+                iconDark.classList.add('hidden');
+            } else {
+                html.classList.remove('dark');
+                iconDark.classList.remove('hidden');
+                iconLight.classList.add('hidden');
+            }
+
+            // Кнопка авто-таймера
+            const autoBtn = document.getElementById('toggle-autostart');
+            if (state.settings.autoStartTimer) {
+                autoBtn.className = 'flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-medium border border-emerald-200 dark:border-emerald-800/70 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 transition';
+            } else {
+                autoBtn.className = 'flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-medium border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition';
+            }
+
+            // Кнопка звука
+            const soundBtn = document.getElementById('toggle-sound');
+            if (state.settings.soundEnabled) {
+                soundBtn.innerHTML = `<svg class="w-4 h-4 text-slate-700 dark:text-slate-200" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/></svg>`;
+            } else {
+                soundBtn.innerHTML = `<svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15zM17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/></svg>`;
+            }
+        }
+
+        /**
+         * Подсчёт статистики подходов для конкретного дня
+         */
+        function getDayStats(day) {
+            let totalSets = 0;
+            let doneSets = 0;
+
+            day.exercises.forEach(ex => {
+                totalSets += ex.sets;
+                const arr = state.completedSets[ex.id] || [];
+                for (let i = 0; i < ex.sets; i++) {
+                    if (arr[i]) doneSets++;
+                }
+            });
+
+            const percent = totalSets > 0 ? Math.round((doneSets / totalSets) * 100) : 0;
+            return { totalSets, doneSets, percent };
+        }
+
+        /**
+         * Отрисовка вкладок 4-х дней
+         */
+        function renderDayTabs() {
+            const container = document.getElementById('day-tabs');
+            container.innerHTML = '';
+
+            WORKOUT_PLAN.forEach(day => {
+                const isActive = day.id === state.activeDayId;
+                const stats = getDayStats(day);
+                const isAllDone = stats.doneSets === stats.totalSets && stats.totalSets > 0;
+                const isLoggedDone = !!state.completedDays[day.id];
+
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = isActive
+                    ? 'text-left p-3 rounded-2xl border-2 border-slate-900 dark:border-emerald-500 bg-white dark:bg-slate-900 shadow-xs transition relative'
+                    : 'text-left p-3 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/60 hover:bg-white dark:hover:bg-slate-900 transition relative';
+
+                btn.innerHTML = `
+                    <div class="flex items-center justify-between gap-1 mb-1">
+                        <span class="text-xs font-bold ${isActive ? 'text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-300'}">
+                            ${day.shortTitle}
+                        </span>
+                        ${(isAllDone || isLoggedDone) ? `
+                            <span class="w-4 h-4 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                                <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                                </svg>
+                            </span>
+                        ` : `
+                            <span class="text-[11px] font-medium text-slate-400 dark:text-slate-500">
+                                ${stats.doneSets}/${stats.totalSets}
+                            </span>
+                        `}
+                    </div>
+                    <div class="text-xs font-medium text-slate-500 dark:text-slate-400 truncate">
+                        ${day.focus}
+                    </div>
+                    <div class="w-full h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mt-2">
+                        <div class="h-full bg-emerald-600 dark:bg-emerald-500 transition-all duration-300" style="width: ${stats.percent}%"></div>
+                    </div>
+                `;
+
+                btn.addEventListener('click', () => {
+                    state.activeDayId = day.id;
+                    saveState();
+                    renderAll();
+                });
+
+                container.appendChild(btn);
+            });
+        }
+
+        /**
+         * Отрисовка заголовка активного дня и списка упражнений
+         */
+        function renderActiveDay() {
+            const day = WORKOUT_PLAN.find(d => d.id === state.activeDayId) || WORKOUT_PLAN[0];
+            const stats = getDayStats(day);
+
+            document.getElementById('active-day-title').textContent = day.title;
+            document.getElementById('active-day-subtitle').textContent = day.subtitle;
+            document.getElementById('day-sets-counter').textContent = `${stats.doneSets} / ${stats.totalSets} подходов`;
+            document.getElementById('day-percent').textContent = `${stats.percent}% завершено`;
+            document.getElementById('day-progress-bar').style.width = `${stats.percent}%`;
+
+            const badge = document.getElementById('active-day-badge');
+            if (stats.doneSets === stats.totalSets && stats.totalSets > 0) {
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+
+            const listEl = document.getElementById('exercises-list');
+            listEl.innerHTML = '';
+
+            day.exercises.forEach((ex, index) => {
+                const exProgress = state.completedSets[ex.id] || Array(ex.sets).fill(false);
+                const exDoneCount = exProgress.filter(Boolean).length;
+                const isExFinished = exDoneCount === ex.sets;
+
+                const card = document.createElement('article');
+                card.className = `bg-white dark:bg-slate-900 border ${isExFinished ? 'border-emerald-200 dark:border-emerald-900/70' : 'border-slate-200/80 dark:border-slate-800'} rounded-2xl p-4 sm:p-5 transition-colors shadow-2xs`;
+
+                // Формируем кнопки подходов
+                let setsHtml = '';
+                for (let i = 0; i < ex.sets; i++) {
+                    const checked = !!exProgress[i];
+                    setsHtml += `
+                        <button type="button"
+                            data-ex-id="${ex.id}"
+                            data-set-idx="${i}"
+                            data-rest="${ex.restSec}"
+                            data-ex-name="${ex.name}"
+                            class="set-btn flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-semibold border transition-all duration-150 select-none ${
+                                checked
+                                    ? 'bg-emerald-600 dark:bg-emerald-600 border-emerald-600 text-white shadow-2xs'
+                                    : 'bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700/80 text-slate-700 dark:text-slate-200 hover:border-slate-300 dark:hover:border-slate-600'
+                            }">
+                            ${checked ? `
+                                <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                                </svg>
+                            ` : `
+                                <span class="w-3.5 h-3.5 rounded-full border border-slate-300 dark:border-slate-600 shrink-0"></span>
+                            `}
+                            <span>Подход ${i + 1}</span>
+                        </button>
+                    `;
+                }
+
+                card.innerHTML = `
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="flex items-start gap-3">
+                            <span class="w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+                                ${index + 1}
+                            </span>
+                            <div>
+                                <h3 class="text-sm sm:text-base font-semibold text-slate-900 dark:text-white leading-snug ${isExFinished ? 'line-through decoration-emerald-500/60 text-slate-500 dark:text-slate-400' : ''}">
+                                    ${ex.name}
+                                </h3>
+                                <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+                                    <span class="inline-flex items-center gap-1 font-medium text-slate-700 dark:text-slate-300">
+                                        <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h7"/>
+                                        </svg>
+                                        ${ex.sets} × ${ex.reps}
+                                    </span>
+                                    <button type="button" data-quick-rest="${ex.restSec}" data-quick-label="${ex.name}"
+                                        class="quick-rest-trigger inline-flex items-center gap-1 hover:text-emerald-600 dark:hover:text-emerald-400 transition underline decoration-dotted underline-offset-2"
+                                        title="Запустить таймер отдыха для этого упражнения">
+                                        <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                        </svg>
+                                        Отдых: ${ex.restLabel}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Кнопка раскрытия подсказки по технике -->
+                        <button type="button" class="tip-toggle p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition shrink-0"
+                            title="Техника выполнения">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </button>
+                    </div>
+
+                    <!-- Скрываемая подсказка по технике -->
+                    <div class="tip-box hidden mt-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                        <span class="font-semibold text-slate-800 dark:text-slate-200">Техника: </span>${ex.tip}
+                    </div>
+
+                    <!-- Сетка кнопок подходов -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
+                        ${setsHtml}
+                    </div>
+                `;
+
+                // Обработчик раскрытия подсказки
+                const tipToggle = card.querySelector('.tip-toggle');
+                const tipBox = card.querySelector('.tip-box');
+                tipToggle.addEventListener('click', () => {
+                    tipBox.classList.toggle('hidden');
+                });
+
+                // Обработчик запуска таймера при клике на текст "Отдых: ..."
+                const quickRestBtn = card.querySelector('.quick-rest-trigger');
+                quickRestBtn.addEventListener('click', () => {
+                    startRestTimer(ex.restSec, ex.name, true);
+                });
+
+                // Обработчики кликов по подходам
+                card.querySelectorAll('.set-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const exId = btn.dataset.exId;
+                        const setIdx = parseInt(btn.dataset.setIdx, 10);
+                        const restSec = parseInt(btn.dataset.rest, 10);
+                        const exName = btn.dataset.exName;
+
+                        if (!state.completedSets[exId]) {
+                            state.completedSets[exId] = Array(ex.sets).fill(false);
+                        }
+
+                        const wasChecked = state.completedSets[exId][setIdx];
+                        state.completedSets[exId][setIdx] = !wasChecked;
+                        saveState();
+                        renderDayTabs();
+                        renderActiveDay();
+
+                        // Если подход отмечен как выполненный — подставляем время отдыха и (если включено) запускаем таймер
+                        if (!wasChecked) {
+                            startRestTimer(restSec, exName, state.settings.autoStartTimer);
+                        }
+                    });
+                });
+
+                listEl.appendChild(card);
+            });
+        }
+
+        /**
+         * Отрисовка журнала завершённых тренировок
+         */
+        function renderHistory() {
+            const listEl = document.getElementById('history-list');
+            const clearBtn = document.getElementById('btn-clear-history');
+
+            if (!state.history || state.history.length === 0) {
+                clearBtn.classList.add('hidden');
+                listEl.innerHTML = `
+                    <p class="text-xs text-slate-400 dark:text-slate-500 py-2">
+                        Пока нет завершённых тренировок. После выполнения подходов нажмите «Завершить тренировку», чтобы зафиксировать прогресс.
+                    </p>
+                `;
+                return;
+            }
+
+            clearBtn.classList.remove('hidden');
+            listEl.innerHTML = state.history.slice(0, 12).map(item => `
+                <div class="flex items-center justify-between gap-3 py-2 px-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800/80 text-xs">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                        <span class="font-medium text-slate-800 dark:text-slate-200 truncate">${item.dayTitle}</span>
+                    </div>
+                    <div class="flex items-center gap-3 shrink-0 text-slate-500 dark:text-slate-400">
+                        <span>${item.setsCount} подх.</span>
+                        <span>${item.dateStr}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        /**
+         * Логика таймера отдыха
+         */
+        function formatSeconds(sec) {
+            const clamped = Math.max(0, Math.floor(sec));
+            const m = Math.floor(clamped / 60);
+            const s = clamped % 60;
+            return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        }
+
+        function updateTimerUI() {
+            document.getElementById('timer-display').textContent = formatSeconds(timerState.remaining);
+            document.getElementById('timer-label').textContent = timerState.label || 'Отдых';
+
+            const toggleBtn = document.getElementById('timer-toggle');
+            const toggleText = document.getElementById('timer-toggle-text');
+
+            if (timerState.isRunning) {
+                toggleText.textContent = 'Пауза';
+                toggleBtn.className = 'px-4 sm:px-5 py-2.5 rounded-xl text-sm font-semibold bg-amber-600 hover:bg-amber-700 text-white transition flex items-center gap-1.5 min-w-[104px] justify-center';
+            } else {
+                toggleText.textContent = 'Старт';
+                toggleBtn.className = 'px-4 sm:px-5 py-2.5 rounded-xl text-sm font-semibold bg-slate-900 dark:bg-emerald-600 text-white hover:bg-slate-800 dark:hover:bg-emerald-500 transition flex items-center gap-1.5 min-w-[104px] justify-center';
+            }
+
+            const pct = timerState.duration > 0 ? Math.min(100, Math.max(0, (timerState.remaining / timerState.duration) * 100)) : 0;
+            document.getElementById('timer-progress-bar').style.width = `${pct}%`;
+        }
+
+        function stopTimerInterval() {
+            if (timerState.intervalId) {
+                clearInterval(timerState.intervalId);
+                timerState.intervalId = null;
+            }
+            timerState.isRunning = false;
+        }
+
+        function startRestTimer(seconds, label = 'Отдых', autoRun = true) {
+            stopTimerInterval();
+            timerState.duration = seconds;
+            timerState.remaining = seconds;
+            // Сокращаем название упражнения для компактного отображения под таймером
+            timerState.label = label.split('(')[0].trim();
+
+            const timerBar = document.getElementById('timer-bar');
+            timerBar.classList.remove('timer-finished');
+
+            if (autoRun) {
+                resumeTimer();
+            } else {
+                updateTimerUI();
+            }
+        }
+
+        function resumeTimer() {
+            if (timerState.isRunning) return;
+            if (timerState.remaining <= 0) {
+                timerState.remaining = timerState.duration;
+            }
+
+            timerState.isRunning = true;
+            updateTimerUI();
+
+            timerState.intervalId = setInterval(() => {
+                timerState.remaining -= 1;
+                if (timerState.remaining <= 0) {
+                    timerState.remaining = 0;
+                    stopTimerInterval();
+                    updateTimerUI();
+                    playTimerChime();
+                    const timerBar = document.getElementById('timer-bar');
+                    timerBar.classList.remove('timer-finished');
+                    void timerBar.offsetWidth; // перезапуск анимации
+                    timerBar.classList.add('timer-finished');
+                    showToast('Время отдыха вышло — пора к следующему подходу!', 'success');
+                } else {
+                    updateTimerUI();
+                }
+            }, 1000);
+        }
+
+        function renderAll() {
+            applyThemeAndSettings();
+            renderDayTabs();
+            renderActiveDay();
+            renderHistory();
+            updateTimerUI();
+        }
+
+        /**
+         * Привязка глобальных обработчиков событий
+         */
+        function bindEvents() {
+            // Переключение темы
+            document.getElementById('toggle-theme').addEventListener('click', () => {
+                state.settings.darkMode = !state.settings.darkMode;
+                saveState();
+                applyThemeAndSettings();
+            });
+
+            // Переключение автозапуска таймера
+            document.getElementById('toggle-autostart').addEventListener('click', () => {
+                state.settings.autoStartTimer = !state.settings.autoStartTimer;
+                saveState();
+                applyThemeAndSettings();
+                showToast(state.settings.autoStartTimer
+                    ? 'Автозапуск таймера при отметке подхода включён'
+                    : 'Автозапуск таймера отключён');
+            });
+
+            // Переключение звука
+            document.getElementById('toggle-sound').addEventListener('click', () => {
+                state.settings.soundEnabled = !state.settings.soundEnabled;
+                saveState();
+                applyThemeAndSettings();
+                showToast(state.settings.soundEnabled ? 'Звук таймера включён' : 'Звук таймера выключен');
+            });
+
+            // Кнопка Старт / Пауза таймера
+            document.getElementById('timer-toggle').addEventListener('click', () => {
+                if (timerState.isRunning) {
+                    stopTimerInterval();
+                    updateTimerUI();
+                } else {
+                    resumeTimer();
+                }
+            });
+
+            // Кнопка Сброса таймера
+            document.getElementById('timer-reset').addEventListener('click', () => {
+                stopTimerInterval();
+                timerState.remaining = timerState.duration;
+                updateTimerUI();
+            });
+
+            // Кнопки -15с и +15с
+            document.getElementById('timer-minus').addEventListener('click', () => {
+                timerState.remaining = Math.max(5, timerState.remaining - 15);
+                if (timerState.remaining > timerState.duration) {
+                    timerState.duration = timerState.remaining;
+                }
+                updateTimerUI();
+            });
+
+            document.getElementById('timer-plus').addEventListener('click', () => {
+                timerState.remaining += 15;
+                if (timerState.remaining > timerState.duration) {
+                    timerState.duration = timerState.remaining;
+                }
+                updateTimerUI();
+            });
+
+            // Быстрые пресеты таймера
+            document.querySelectorAll('.timer-preset').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const sec = parseInt(btn.dataset.preset, 10);
+                    startRestTimer(sec, `Отдых (${sec} сек)`, true);
+                });
+            });
+
+            // Завершить тренировку
+            document.getElementById('btn-finish-workout').addEventListener('click', () => {
+                const day = WORKOUT_PLAN.find(d => d.id === state.activeDayId) || WORKOUT_PLAN[0];
+                const stats = getDayStats(day);
+
+                if (stats.doneSets === 0) {
+                    showToast('Отметьте хотя бы один выполненный подход перед завершением.');
+                    return;
+                }
+
+                const now = new Date();
+                const dateStr = now.toLocaleDateString('ru-RU', {
+                    day: '2-digit',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+
+                state.completedDays[day.id] = true;
+                state.history.unshift({
+                    id: Date.now(),
+                    dayId: day.id,
+                    dayTitle: `${day.shortTitle}: ${day.focus}`,
+                    dateStr,
+                    setsCount: `${stats.doneSets}/${stats.totalSets}`
+                });
+
+                saveState();
+                renderDayTabs();
+                renderHistory();
+                showToast(`Тренировка «${day.shortTitle}» записана в историю!`, 'success');
+            });
+
+            // Сбросить подходы текущего дня
+            document.getElementById('btn-reset-day').addEventListener('click', () => {
+                const day = WORKOUT_PLAN.find(d => d.id === state.activeDayId) || WORKOUT_PLAN[0];
+                showConfirmModal(
+                    `Сбросить ${day.shortTitle}?`,
+                    'Все отметки подходов для этого дня будут очищены, чтобы вы могли начать новый цикл.',
+                    () => {
+                        day.exercises.forEach(ex => {
+                            delete state.completedSets[ex.id];
+                        });
+                        delete state.completedDays[day.id];
+                        saveState();
+                        renderDayTabs();
+                        renderActiveDay();
+                        showToast(`Отметки для «${day.shortTitle}» сброшены`);
+                    }
+                );
+            });
+
+            // Очистить историю тренировок
+            document.getElementById('btn-clear-history').addEventListener('click', () => {
+                showConfirmModal(
+                    'Очистить историю?',
+                    'Все записи о завершённых тренировках будут удалены.',
+                    () => {
+                        state.history = [];
+                        saveState();
+                        renderHistory();
+                        showToast('История тренировок очищена');
+                    }
+                );
+            });
+        }
+
+        // Запуск приложения после загрузки DOM
+        document.addEventListener('DOMContentLoaded', () => {
+            loadState();
+            bindEvents();
+            renderAll();
+        });
+    </script>
+</body>
+</html>
